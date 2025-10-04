@@ -1,41 +1,65 @@
-
 import React, { useState } from 'react';
 import { YouTubeIcon } from './IconComponents';
+import { useAuth } from '../contexts/AuthContext';
+import ProfileDropdown from './ProfileDropdown';
+import CustomGoogleSignInButton from './CustomGoogleSignInButton';
 
-const Header: React.FC = () => {
+interface HeaderProps {
+  onGoHome: () => void;
+}
+
+const Header: React.FC<HeaderProps> = ({ onGoHome }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { user } = useAuth();
 
   const navLinks = [
-    { name: 'Features', href: '#features' },
-    { name: 'Tools', href: '#tools' },
-    { name: 'Pricing', href: '#pricing' },
+    { name: 'Công Cụ', href: '#tools' },
+    { name: 'Đánh Giá', href: '#testimonials' },
+    { name: 'Giá', href: '#pricing' },
     { name: 'Affiliate', href: '#affiliate' },
   ];
+
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    onGoHome(); // Ensure we are on the home page before scrolling
+    
+    // Use a timeout to allow the state to update and the main page to render
+    setTimeout(() => {
+      const targetId = e.currentTarget.getAttribute('href')?.substring(1);
+      if (targetId) {
+        const targetElement = document.getElementById(targetId);
+        if (targetElement) {
+          targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    }, 0);
+  };
 
   return (
     <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-lg border-b border-secondary">
       <div className="container mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+          <button onClick={onGoHome} className="flex items-center space-x-2 cursor-pointer">
             <YouTubeIcon className="w-8 h-8 text-primary" />
             <span className="text-xl font-bold text-text-main">YT Pro Tools</span>
-          </div>
+          </button>
           
           <nav className="hidden md:flex items-center space-x-8">
             {navLinks.map((link) => (
-              <a key={link.name} href={link.href} className="text-text-secondary hover:text-text-main transition-colors duration-300">
+              <a key={link.name} href={link.href} onClick={handleNavClick} className="text-text-secondary hover:text-text-main transition-colors duration-300 text-sm">
                 {link.name}
               </a>
             ))}
           </nav>
 
-          <div className="hidden md:flex items-center space-x-4">
-            <button className="text-text-secondary hover:text-text-main transition-colors duration-300">
-              Đăng nhập
-            </button>
-            <button className="bg-primary hover:bg-red-700 text-white font-semibold px-5 py-2 rounded-lg transition-transform duration-300 hover:scale-105">
-              Đăng ký miễn phí
-            </button>
+          <div className="hidden md:flex items-center">
+            {user ? (
+              <ProfileDropdown />
+            ) : (
+              <CustomGoogleSignInButton>
+                Đăng nhập / Đăng ký
+              </CustomGoogleSignInButton>
+            )}
           </div>
 
           <div className="md:hidden">
@@ -51,18 +75,19 @@ const Header: React.FC = () => {
           <div className="md:hidden mt-4">
             <nav className="flex flex-col space-y-4">
               {navLinks.map((link) => (
-                <a key={link.name} href={link.href} className="text-text-secondary hover:text-text-main transition-colors duration-300">
+                <a key={link.name} href={link.href} onClick={(e) => { handleNavClick(e); setIsMenuOpen(false); }} className="text-text-secondary hover:text-text-main transition-colors duration-300">
                   {link.name}
                 </a>
               ))}
             </nav>
-            <div className="flex flex-col space-y-4 mt-6">
-              <button className="text-text-secondary hover:text-text-main transition-colors duration-300 text-left">
-                Đăng nhập
-              </button>
-              <button className="bg-primary hover:bg-red-700 text-white font-semibold px-5 py-2 rounded-lg transition-transform duration-300 hover:scale-105">
-                Đăng ký miễn phí
-              </button>
+            <div className="flex flex-col items-center space-y-4 mt-6">
+             {user ? (
+                <ProfileDropdown />
+             ) : (
+                <CustomGoogleSignInButton className="w-full justify-center py-3">
+                  Đăng nhập với Google
+                </CustomGoogleSignInButton>
+             )}
             </div>
           </div>
         )}
