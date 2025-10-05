@@ -1,186 +1,262 @@
-import React, { useState, useRef } from 'react';
-import { SpeakerWaveIcon, SpinnerIcon, PlayIcon, PauseIcon } from './IconComponents';
-// This import is for simulation purposes. In a real app, this logic would be on a server.
-import { generateAudioFromText } from '../../server/functions';
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+    SpeakerWaveIcon, SpinnerIcon, PlayIcon, PauseIcon, DownloadIcon, PlusIcon, 
+    TrashIcon, ChevronDownIcon, AdjustmentsHorizontalIcon, InformationCircleIcon, AiIcon
+} from './IconComponents';
+import { GoogleGenAI } from "@google/genai";
 
-const voices = [
-    { name: 'Vietnamese (Female)', value: 'vi-VN-Standard-A', lang: 'vi-VN' },
-    { name: 'Vietnamese (Male)', value: 'vi-VN-Standard-B', lang: 'vi-VN' },
-    { name: 'US English (Female)', value: 'en-US-Standard-C', lang: 'en-US' },
-    { name: 'US English (Male)', value: 'en-US-Standard-D', lang: 'en-US' },
-    { name: 'British English (Female)', value: 'en-GB-Standard-A', lang: 'en-GB' },
-];
+// Component to represent the Stop icon
+const StopIcon: React.FC<{className?: string}> = ({ className }) => (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <path fillRule="evenodd" d="M4.5 7.5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9Z" clipRule="evenodd" />
+    </svg>
+);
 
-// Helper to convert base64 to a Blob URL
-const base64ToBlobUrl = (base64: string, mimeType: string): string => {
-    const byteCharacters = atob(base64);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    const blob = new Blob([byteArray], { type: mimeType });
-    return URL.createObjectURL(blob);
-};
 
 const TextToSpeech: React.FC = () => {
-    const [text, setText] = useState('Chào mừng đến với YT Pro Tools, công cụ tối ưu hóa kênh YouTube hàng đầu dành cho các nhà sáng tạo nội dung.');
-    const [selectedVoice, setSelectedVoice] = useState(voices[0].value);
-    const [isLoading, setIsLoading] = useState(false);
+    const [script, setScript] = useState('Chào mừng đến với YT Pro Tools. Công cụ này giờ đây sử dụng giọng đọc có sẵn trên trình duyệt của bạn để phát ra âm thanh ngay lập tức. Hãy thử nhấn nút "Đọc" xem sao!');
+    const [rate, setRate] = useState(1);
+    const [pitch, setPitch] = useState(1);
+    const [selectedVoice, setSelectedVoice] = useState<SpeechSynthesisVoice | null>(null);
+    const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+    
+    const [status, setStatus] = useState<'idle' | 'speaking' | 'paused'>('idle');
     const [error, setError] = useState<string | null>(null);
-    const [audioUrl, setAudioUrl] = useState<string | null>(null);
-    const [isPlaying, setIsPlaying] = useState(false);
-    const audioRef = useRef<HTMLAudioElement>(null);
+    const [aiSuggestions, setAiSuggestions] = useState<string[]>([]);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    
+    // We need a ref to the utterance to handle pause/resume correctly across re-renders
+    const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
-    const handleGenerateAudio = async () => {
-        if (!text.trim()) {
-            setError('Vui lòng nhập văn bản để tạo âm thanh.');
+    // Populate voices when the component mounts
+    useEffect(() => {
+        const populateVoiceList = () => {
+            const availableVoices = window.speechSynthesis.getVoices();
+            setVoices(availableVoices);
+            if (availableVoices.length > 0) {
+                // Try to find a Vietnamese voice by default
+                const vietnameseVoice = availableVoices.find(voice => voice.lang.startsWith('vi'));
+                setSelectedVoice(vietnameseVoice || availableVoices[0]);
+            }
+        };
+
+        populateVoiceList();
+        if (window.speechSynthesis.onvoiceschanged !== undefined) {
+            window.speechSynthesis.onvoiceschanged = populateVoiceList;
+        }
+
+        // Cleanup function to cancel speech if component unmounts
+        return () => {
+            window.speechSynthesis.cancel();
+        };
+    }, []);
+
+    const handlePlay = () => {
+        if (!script.trim()) {
+            setError('Vui lòng nhập kịch bản.');
             return;
         }
-
-        setIsLoading(true);
-        setError(null);
-        setAudioUrl(null);
-        if (audioRef.current) {
-            audioRef.current.pause();
-            setIsPlaying(false);
+        if (!selectedVoice) {
+            setError('Không tìm thấy giọng đọc nào trên thiết bị của bạn.');
+            return;
         }
+        
+        // Cancel any previous speech before starting a new one
+        window.speechSynthesis.cancel();
 
-        try {
-            // ================== FRONTEND CALLING THE BACKEND ==================
-            // In a real app, this would be a fetch call to your deployed Cloud Function URL.
-            // const response = await fetch('https://your-backend-url.com/api/text-to-speech', {
-            //     method: 'POST',
-            //     headers: { 'Content-Type': 'application/json' },
-            //     body: JSON.stringify({
-            //         text,
-            //         voice: selectedVoice,
-            //         languageCode: voices.find(v => v.value === selectedVoice)?.lang,
-            //     }),
-            // });
-            // if (!response.ok) {
-            //     throw new Error('Yêu cầu đến backend thất bại.');
-            // }
-            // const data = await response.json();
-            // const base64Audio = data.audioContent;
-            // =================================================================
+        const utterance = new SpeechSynthesisUtterance(script);
+        utterance.voice = selectedVoice;
+        utterance.pitch = pitch;
+        utterance.rate = rate;
 
-            // We simulate the call to the backend function for now.
-            const selectedVoiceData = voices.find(v => v.value === selectedVoice);
-            if (!selectedVoiceData) {
-                throw new Error("Invalid voice selected.");
-            }
-            const base64Audio = await generateAudioFromText(text, selectedVoiceData.value, selectedVoiceData.lang);
-            
-            // Convert the base64 audio to a playable URL and set it
-            const url = base64ToBlobUrl(base64Audio, 'audio/mpeg');
-            setAudioUrl(url);
+        utterance.onstart = () => {
+            setStatus('speaking');
+            setError(null);
+        };
+        utterance.onpause = () => setStatus('paused');
+        utterance.onresume = () => setStatus('speaking');
+        utterance.onend = () => setStatus('idle');
+        utterance.onerror = (event) => {
+            setError(`Lỗi phát âm: ${event.error}`);
+            setStatus('idle');
+        };
+        
+        utteranceRef.current = utterance;
+        window.speechSynthesis.speak(utterance);
+    };
 
-        } catch (e) {
-            console.error(e);
-            const errorMessage = e instanceof Error ? e.message : 'Đã xảy ra lỗi không xác định.';
-            setError(`Không thể tạo âm thanh: ${errorMessage}`);
-        } finally {
-            setIsLoading(false);
+    const handlePause = () => {
+        window.speechSynthesis.pause();
+    };
+
+    const handleResume = () => {
+        window.speechSynthesis.resume();
+    };
+
+    const handleStop = () => {
+        window.speechSynthesis.cancel();
+        setStatus('idle');
+    };
+    
+    const handleVoiceChange = (voiceURI: string) => {
+        const voice = voices.find(v => v.voiceURI === voiceURI);
+        if (voice) {
+            setSelectedVoice(voice);
         }
     };
 
-    const togglePlayPause = () => {
-        if (audioRef.current) {
-            if (isPlaying) {
-                audioRef.current.pause();
+    const handleAiAnalysis = async () => {
+        if (!script.trim()) {
+            setError('Vui lòng nhập kịch bản để AI phân tích.'); return;
+        }
+        setIsAnalyzing(true); setAiSuggestions([]); setError(null);
+        
+        try {
+            const apiKey = window.process?.env?.API_KEY;
+            if (!apiKey) throw new Error('API Key chưa được cấu hình.');
+            const ai = new GoogleGenAI({ apiKey });
+
+            const prompt = `Bạn là một đạo diễn lồng tiếng AI. Phân tích kịch bản sau đây và đưa ra 3-5 gợi ý cụ thể để làm cho giọng đọc trở nên hấp dẫn hơn. Tập trung vào nhịp độ, nhấn nhá, và cảm xúc. Trả lời bằng tiếng Việt.
+            Kịch bản: "${script}"`;
+            
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: prompt
+            });
+            
+            const suggestionsText = response.text;
+            if (suggestionsText) {
+                setAiSuggestions(suggestionsText.split('\n').filter(line => line.match(/^(\d+\.|\*|-)\s/)).map(line => line.replace(/^(\d+\.|\*|-)\s/, '')));
             } else {
-                audioRef.current.play();
+                throw new Error("AI không đưa ra được gợi ý nào.");
             }
+
+        } catch(e) {
+             setError(`Lỗi phân tích AI: ${e instanceof Error ? e.message : 'Thử lại sau.'}`);
+        } finally {
+            setIsAnalyzing(false);
         }
     };
     
-     const handleAudioStateChange = () => {
-        if (audioRef.current) {
-            setIsPlaying(!audioRef.current.paused);
-        }
-    };
-
     return (
-        <section id="text-to-speech" className="py-20 bg-background bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-900/30 via-background to-background">
+        <section id="text-to-speech-studio" className="py-20 bg-background bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-900/30 via-background to-background">
             <div className="container mx-auto px-6">
                 <div className="text-center mb-12">
-                    <h2 className="text-3xl md:text-4xl font-bold text-text-main">Chuyển Văn Bản Thành Giọng Nói</h2>
+                     <div className="flex justify-center items-center gap-4 mb-4">
+                        <SpeakerWaveIcon className="w-10 h-10 text-primary" />
+                        <h2 className="text-3xl md:text-4xl font-bold text-text-main">Voiceover Studio</h2>
+                    </div>
                     <p className="text-lg text-text-secondary mt-4 max-w-3xl mx-auto">
-                        Tạo giọng đọc AI chất lượng cao cho video của bạn. Dán kịch bản, chọn giọng đọc, và tạo file âm thanh chỉ trong vài giây.
+                        Tạo giọng đọc chuyên nghiệp với khả năng kiểm soát đa giọng nói, nhịp điệu và cảm xúc.
                     </p>
                 </div>
-
-                <div className="max-w-4xl mx-auto bg-card border border-secondary rounded-xl p-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        <div>
-                            <label htmlFor="voice-select" className="block text-text-secondary mb-2 font-semibold">Chọn Giọng Đọc</label>
-                            <select
-                                id="voice-select"
-                                value={selectedVoice}
-                                onChange={(e) => setSelectedVoice(e.target.value)}
-                                className="w-full bg-background border border-secondary rounded-lg p-3 text-text-main focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
-                                disabled={isLoading}
-                            >
-                                {voices.map(voice => (
-                                    <option key={voice.value} value={voice.value}>{voice.name}</option>
-                                ))}
-                            </select>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Script & AI Analysis Column */}
+                    <div className="lg:col-span-2 space-y-6">
+                        <div className="bg-card border border-secondary rounded-xl p-6">
+                             <h3 className="text-xl font-bold text-text-main mb-4">Kịch bản</h3>
+                             <textarea
+                                value={script}
+                                onChange={(e) => setScript(e.target.value)}
+                                placeholder="Dán kịch bản của bạn vào đây..."
+                                className="w-full h-64 bg-background border border-secondary rounded-lg p-4 text-text-main text-base leading-relaxed focus:outline-none focus:ring-2 focus:ring-primary"
+                                disabled={status !== 'idle'}
+                            />
                         </div>
-                        <div className="flex items-end">
-                             <button
-                                onClick={handleGenerateAudio}
-                                disabled={isLoading}
-                                className="w-full bg-primary text-white font-bold py-3 px-6 rounded-lg text-lg transition-transform duration-300 hover:scale-105 shadow-lg shadow-primary/20 disabled:bg-gray-600 disabled:cursor-not-allowed disabled:scale-100 inline-flex items-center justify-center gap-2"
-                            >
-                                {isLoading ? <SpinnerIcon className="w-6 h-6 animate-spin" /> : <SpeakerWaveIcon className="w-6 h-6" />}
-                                <span>{isLoading ? 'Đang tạo...' : 'Tạo Âm Thanh'}</span>
-                            </button>
+                        <div className="bg-card border border-secondary rounded-xl p-6">
+                             <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-xl font-bold text-text-main flex items-center gap-2"><AiIcon className="w-6 h-6 text-accent"/>Đạo diễn lồng tiếng AI</h3>
+                                <button onClick={handleAiAnalysis} disabled={isAnalyzing || status !== 'idle'} className="bg-accent/20 text-accent font-semibold py-2 px-4 rounded-lg hover:bg-accent/30 transition-colors text-sm disabled:opacity-50">
+                                    {isAnalyzing ? <SpinnerIcon className="w-5 h-5 animate-spin"/> : 'Phân tích & Gợi ý'}
+                                </button>
+                            </div>
+                            {isAnalyzing ? (
+                                 <div className="flex items-center justify-center text-text-secondary gap-3 py-4">
+                                    <SpinnerIcon className="w-6 h-6 animate-spin" />
+                                    <span>AI đang đọc kịch bản của bạn...</span>
+                                </div>
+                            ) : aiSuggestions.length > 0 ? (
+                                <ul className="space-y-3 text-text-secondary">
+                                    {aiSuggestions.map((s, i) => <li key={i} className="flex items-start gap-3 p-2 bg-background/50 rounded-md"><InformationCircleIcon className="w-5 h-5 text-accent flex-shrink-0 mt-0.5" /><span>{s}</span></li>)}
+                                </ul>
+                            ) : (
+                                <p className="text-sm text-text-secondary text-center py-4">Nhấp vào nút phân tích để nhận các mẹo cải thiện kịch bản của bạn.</p>
+                            )}
                         </div>
                     </div>
-                    
-                    <textarea
-                        value={text}
-                        onChange={(e) => setText(e.target.value)}
-                        placeholder="Dán kịch bản của bạn vào đây..."
-                        className="w-full h-48 bg-background border border-secondary rounded-lg p-4 text-text-main focus:outline-none focus:ring-2 focus:ring-primary transition-colors"
-                        disabled={isLoading}
-                    />
-                    
-                    {error && <p className="text-red-400 mt-4 text-center bg-red-500/10 border border-red-500/30 rounded-lg p-3">{error}</p>}
-                    
-                    {audioUrl && (
-                        <div className="mt-8 pt-6 border-t border-secondary animate-fade-in">
-                             <h3 className="text-xl font-bold text-text-main mb-4">Nghe lại Âm thanh:</h3>
-                             <div className="bg-background p-4 rounded-lg border border-secondary flex items-center gap-4">
-                                <button onClick={togglePlayPause} className="p-3 bg-primary rounded-full text-white hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-background focus:ring-primary">
-                                    {isPlaying ? <PauseIcon className="w-6 h-6" /> : <PlayIcon className="w-6 h-6" />}
-                                </button>
-                                <div className="w-full">
-                                  <audio 
-                                      ref={audioRef} 
-                                      src={audioUrl}
-                                      controls
-                                      onPlay={handleAudioStateChange}
-                                      onPause={handleAudioStateChange}
-                                      onEnded={handleAudioStateChange}
-                                      className="w-full"
-                                  />
+
+                    {/* Studio Controls Column */}
+                    <div className="lg:col-span-1 space-y-6">
+                        <div className="bg-card border border-secondary rounded-xl p-6 self-start">
+                            <h3 className="text-xl font-bold text-text-main mb-4 flex items-center gap-2"><AdjustmentsHorizontalIcon className="w-6 h-6"/>Bảng điều khiển Studio</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="font-semibold text-text-secondary">Giọng đọc</label>
+                                     <select 
+                                        value={selectedVoice?.voiceURI || ''} 
+                                        onChange={e => handleVoiceChange(e.target.value)} 
+                                        className="w-full bg-secondary border border-secondary/50 rounded p-2 text-text-secondary text-sm focus:outline-none focus:ring-1 focus:ring-primary mt-2"
+                                        disabled={voices.length === 0 || status !== 'idle'}
+                                    >
+                                        {voices.length > 0 ? (
+                                            voices
+                                                .filter(v => v.lang.startsWith('vi') || v.lang.startsWith('en'))
+                                                .map(v => <option key={v.voiceURI} value={v.voiceURI}>{v.name} ({v.lang})</option>)
+                                        ) : (
+                                            <option>Đang tải giọng đọc...</option>
+                                        )}
+                                     </select>
                                 </div>
+                                <div>
+                                    <label className="font-semibold text-text-secondary">Tốc độ nói</label>
+                                    <div className="flex items-center gap-3">
+                                        <input type="range" min="0.5" max="2" step="0.1" value={rate} onChange={e => setRate(parseFloat(e.target.value))} className="w-full" disabled={status !== 'idle'}/>
+                                        <span className="text-text-main font-mono w-12 text-center">{rate.toFixed(1)}x</span>
+                                    </div>
+                                </div>
+                                 <div>
+                                    <label className="font-semibold text-text-secondary">Cao độ</label>
+                                    <div className="flex items-center gap-3">
+                                        <input type="range" min="0" max="2" step="0.1" value={pitch} onChange={e => setPitch(parseFloat(e.target.value))} className="w-full" disabled={status !== 'idle'}/>
+                                        <span className="text-text-main font-mono w-12 text-center">{pitch.toFixed(1)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="bg-card border border-secondary rounded-xl p-4 self-start">
+                             <div className="grid grid-cols-2 gap-3">
+                                {status === 'idle' && (
+                                    <button onClick={handlePlay} className="col-span-2 bg-primary text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-red-700 transition-colors">
+                                        <PlayIcon className="w-6 h-6"/> Đọc
+                                    </button>
+                                )}
+                                {status === 'speaking' && (
+                                    <button onClick={handlePause} className="bg-amber-500 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-amber-600 transition-colors">
+                                        <PauseIcon className="w-6 h-6"/> Tạm dừng
+                                    </button>
+                                )}
+                                {status === 'paused' && (
+                                    <button onClick={handleResume} className="bg-green-500 text-white font-bold py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-green-600 transition-colors">
+                                        <PlayIcon className="w-6 h-6"/> Đọc tiếp
+                                    </button>
+                                )}
+                                {(status === 'speaking' || status === 'paused') && (
+                                    <button onClick={handleStop} className="bg-secondary text-text-main font-bold py-3 rounded-lg flex items-center justify-center gap-2 hover:bg-gray-700 transition-colors">
+                                        <StopIcon className="w-6 h-6"/> Dừng
+                                    </button>
+                                )}
                              </div>
                         </div>
-                    )}
-
+                        {error && <p className="text-red-400 text-center bg-red-500/10 border border-red-500/30 rounded-lg p-3">{error}</p>}
+                    </div>
                 </div>
+
             </div>
-            <style>{`
-                @keyframes fade-in {
-                  0% { opacity: 0; transform: translateY(10px); }
-                  100% { opacity: 1; transform: translateY(0); }
-                }
-                .animate-fade-in {
-                  animation: fade-in 0.5s ease-out;
-                }
+             <style>{`
+                input[type='range'] { -webkit-appearance: none; appearance: none; width: 100%; height: 8px; background: #282828; border-radius: 5px; outline: none; transition: background 0.2s; }
+                input[type='range']::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; background: #FF0000; cursor: pointer; border-radius: 50%; border: 3px solid #1E1E1E; }
+                input[type='range']:hover { background: #383838; }
             `}</style>
         </section>
     );
