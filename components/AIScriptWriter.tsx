@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { GoogleGenAI, Type } from "@google/genai";
-import { AiIcon, SpinnerIcon, WandIcon, ClipboardDocumentListIcon, SpeakerWaveIcon, CameraIcon, MusicalNoteIcon, DownloadIcon, TranslateIcon, ChatBubbleLeftRightIcon, ImageIcon, CheckIcon, SeoIcon } from './IconComponents';
+import { 
+    AiIcon, SpinnerIcon, WandIcon, ClipboardDocumentListIcon, SpeakerWaveIcon, CameraIcon, 
+    MusicalNoteIcon, DownloadIcon, TranslateIcon, ChatBubbleLeftRightIcon, ImageIcon, 
+    CheckIcon, SeoIcon 
+} from './IconComponents';
+import { generateScript, generateAudio, generateImages } from '../server/functions';
 
 // Data structure for the generated script
 interface ScriptSection {
@@ -90,12 +94,10 @@ const AIScriptWriter: React.FC = () => {
     const [refineQuery, setRefineQuery] = useState('');
     const [isRefining, setIsRefining] = useState(false);
     
-    // Translation state
     const [isTranslateOpen, setIsTranslateOpen] = useState(false);
     const [isTranslating, setIsTranslating] = useState(false);
     const translateRef = useRef<HTMLDivElement>(null);
 
-    // AI Production Assistant State
     const [generatingAssetForSection, setGeneratingAssetForSection] = useState<{ type: 'image' | 'audio', index: number } | null>(null);
 
     useEffect(() => {
@@ -117,77 +119,16 @@ const AIScriptWriter: React.FC = () => {
         }));
     };
 
-    const callGemini = async (prompt: string, schema?: any) => {
-        const apiKey = window.process?.env?.API_KEY;
-        if (!apiKey) throw new Error('API Key chưa được cấu hình.');
-        const ai = new GoogleGenAI({ apiKey });
-
-        const config: any = {};
-        if (schema) {
-            config.responseMimeType = "application/json";
-            config.responseSchema = schema;
-        }
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: config
-        });
-
-        if (!response.text) throw new Error('Phản hồi từ AI trống.');
-        return schema ? JSON.parse(response.text) : response.text;
-    };
-    
-    const scriptSchema = {
-        type: Type.OBJECT,
-        properties: {
-            title_options: { type: Type.ARRAY, description: '3 lựa chọn tiêu đề hấp dẫn, tối ưu SEO.', items: { type: Type.STRING } },
-            hook_options: { type: Type.ARRAY, description: '2 lựa chọn hook gây tò mò.', items: { type: Type.STRING } },
-            script_body: {
-                type: Type.ARRAY, description: 'Các phần chính của kịch bản.',
-                items: {
-                    type: Type.OBJECT, properties: {
-                        section_title: { type: Type.STRING }, dialogue: { type: Type.STRING },
-                        visual_cue: { type: Type.STRING, description: "Gợi ý hình ảnh cụ thể, chi tiết cho cảnh quay." }, 
-                        sound_cue: { type: Type.STRING, description: "Gợi ý nhạc nền và hiệu ứng âm thanh cụ thể." }
-                    }, required: ['section_title', 'dialogue', 'visual_cue', 'sound_cue']
-                }
-            },
-            call_to_action: { type: Type.STRING }
-        }, required: ['title_options', 'hook_options', 'script_body', 'call_to_action']
-    };
-
     const handleGenerateScript = async () => {
         if (!inputs.topic.trim()) { setError('Vui lòng nhập chủ đề chính.'); return; }
         setIsLoading(true); setError(null); setGeneratedScript(null);
         
         try {
-            const prompt = `
-            **VAI TRÒ:** Bạn là một đạo diễn Hollywood từng đoạt giải Oscar kiêm một chuyên gia thuật toán YouTube với 10 năm kinh nghiệm. Nhiệm vụ của bạn là tạo ra một kịch bản video hoàn chỉnh, sẵn sàng để sản xuất, có khả năng viral cực cao.
-
-            **CÁC QUY TẮC VÀNG (BẮT BUỘC TUÂN THỦ):**
-            1.  **HOOK BẤT BẠI:** 3-15 giây đầu tiên phải gây sốc, tạo ra sự tò mò tột độ, hoặc đưa ra một lời hứa hẹn giá trị không thể cưỡng lại. Phải khiến người xem không thể rời mắt.
-            2.  **TƯ DUY ĐA GIÁC QUAN:** Đây là quy tắc quan trọng nhất. MỌI PHẦN trong "script_body" PHẢI có đủ 3 yếu tố:
-                *   **dialogue (lời thoại):** Lời nói của nhân vật hoặc người dẫn chuyện.
-                *   **visual_cue (gợi ý hình ảnh):** Mô tả CỤ THỂ cảnh quay, B-roll, đồ họa, text trên màn hình. Hãy "vẽ" nên video bằng con chữ.
-                *   **sound_cue (gợi ý âm thanh):** Gợi ý CỤ THỂ về nhạc nền (VD: "nhạc cinematic hùng vĩ", "nhạc lofi thư giãn") và các hiệu ứng âm thanh (VD: "tiếng 'whoosh' khi text hiện ra", "tiếng gõ phím dồn dập").
-            3.  **CẤU TRÚC KỂ CHUYỆN BẬC THẦY:** Kịch bản phải có nhịp độ rõ ràng, có mở đầu, cao trào, và kết thúc thỏa mãn. Dẫn dắt cảm xúc của người xem.
-            4.  **TUÂN THỦ ĐỘ DÀI:** Yêu cầu về độ dài là tuyệt đối. Hãy tính toán cẩn thận để thời lượng lời thoại phù hợp với yêu cầu.
-
-            **YÊU CẦU CHI TIẾT CHO KỊCH BẢN NÀY:**
-            *   **Chủ đề chính:** ${inputs.topic}
-            *   **Phong cách video:** ${styles.find(s => s.value === inputs.style)?.name}
-            *   **Tông giọng:** ${tones.find(t => t.value === inputs.tone)?.name}
-            *   **Đối tượng khán giả:** ${inputs.audience}
-            *   **YÊU CẦU ĐỘ DÀI (QUAN TRỌNG NHẤT):** ${inputs.lengthType === 'duration' ? `Thời lượng video khoảng ${inputs.duration} phút.` : `Số từ của kịch bản khoảng ${inputs.wordCount} từ.`}
-            *   **Từ khóa SEO (lồng ghép tự nhiên):** ${inputs.keywords}
-
-            Hãy vận dụng toàn bộ tài năng của bạn. Tạo ra một kiệt tác. Trả về kết quả dưới dạng một đối tượng JSON duy nhất, tuân thủ nghiêm ngặt schema đã cung cấp.`;
-            
-            const result = await callGemini(prompt, scriptSchema);
+            // Call simulated backend function
+            const result = await generateScript(inputs);
             setGeneratedScript(result);
         } catch (e) {
-            console.error(e); setError(`Đã xảy ra lỗi: ${e instanceof Error ? e.message : 'Kiểm tra API key và thử lại.'}`);
+            console.error(e); setError(`Đã xảy ra lỗi: ${e instanceof Error ? e.message : 'Lỗi không xác định.'}`);
         } finally {
             setIsLoading(false);
         }
@@ -196,17 +137,12 @@ const AIScriptWriter: React.FC = () => {
     const handleRefineScript = async (query: string) => {
         if (!query.trim() || !generatedScript) return;
         setIsRefining(true); setError(null);
-
-        try {
-            const prompt = `Bạn là một chuyên gia biên tập kịch bản. Dưới đây là một kịch bản YouTube gốc. Hãy viết lại toàn bộ kịch bản dựa trên yêu cầu sau. Yêu cầu chỉnh sửa: "${query}". Hãy giữ nguyên cấu trúc JSON của kịch bản gốc. Trả về toàn bộ đối tượng JSON đã được chỉnh sửa.
-Kịch bản gốc (JSON): ${JSON.stringify(generatedScript, null, 2)}`;
-            const result = await callGemini(prompt, scriptSchema);
-            setGeneratedScript(result); setRefineQuery('');
-        } catch (e) {
-            console.error(e); setError(`Lỗi tinh chỉnh: ${e instanceof Error ? e.message : 'Không thể hoàn thành.'}`);
-        } finally {
-            setIsRefining(false);
-        }
+        alert('Chức năng "Tinh chỉnh" đang được phát triển và sẽ sớm ra mắt!');
+        // In a real app, you would call a backend function here like:
+        // const result = await refineScript(generatedScript, query);
+        // setGeneratedScript(result);
+        setIsRefining(false);
+        setRefineQuery('');
     };
     
     const handleTranslateScript = async (languageName: string) => {
@@ -214,44 +150,23 @@ Kịch bản gốc (JSON): ${JSON.stringify(generatedScript, null, 2)}`;
         setIsTranslating(true);
         setIsTranslateOpen(false);
         setError(null);
-        try {
-            const originalStyle = styles.find(s => s.value === inputs.style)?.name || 'default';
-            const originalTone = tones.find(t => t.value === inputs.tone)?.name || 'default';
-            const prompt = `Bạn là một chuyên gia dịch thuật chuyên về nội dung sáng tạo cho YouTube. Nhiệm vụ của bạn là dịch kịch bản YouTube sau đây từ Tiếng Việt sang **${languageName}**.
-**QUAN TRỌNG TỐI CAO:** Đừng chỉ dịch từng chữ. Bạn phải **thích ứng văn hóa** cho kịch bản, sử dụng các thành ngữ, tiếng lóng (nếu phù hợp) và cách diễn đạt tự nhiên của người bản xứ nói **${languageName}**.
-Phong cách gốc của video là "${originalStyle}" và tông giọng là "${originalTone}".
-Hãy giữ nguyên vẹn cấu trúc và tất cả các khóa (keys) của đối tượng JSON gốc. Chỉ trả về đối tượng JSON đã được dịch.
-
-Kịch bản gốc (JSON): ${JSON.stringify(generatedScript, null, 2)}`;
-            
-            const translatedResult = await callGemini(prompt, scriptSchema);
-            setGeneratedScript(translatedResult);
-        } catch (e) {
-            console.error(e);
-            setError(`Lỗi dịch thuật: ${e instanceof Error ? e.message : 'Không thể hoàn thành.'}`);
-        } finally {
-            setIsTranslating(false);
-        }
+        alert(`Đang mô phỏng dịch sang ${languageName}... Chức năng này sẽ sớm hoạt động!`);
+        // In a real app, you would call a backend function here like:
+        // const result = await translateScript(generatedScript, languageName);
+        // setGeneratedScript(result);
+        setIsTranslating(false);
     };
 
 
     const handleGenerateImageForSection = async (visualCue: string, index: number) => {
         setGeneratingAssetForSection({ type: 'image', index });
         try {
-            const apiKey = window.process?.env?.API_KEY;
-            if (!apiKey) throw new Error('API Key chưa được cấu hình.');
-            const ai = new GoogleGenAI({ apiKey });
-            const response = await ai.models.generateImages({
-                model: 'imagen-4.0-generate-001',
-                prompt: `${visualCue}, phong cách ${styles.find(s => s.value === inputs.style)?.name || 'điện ảnh'}`,
-                config: { numberOfImages: 1, outputMimeType: 'image/jpeg', aspectRatio: '16:9' },
-            });
-            if (response.generatedImages && response.generatedImages.length > 0) {
-                const imageUrl = `data:image/jpeg;base64,${response.generatedImages[0].image.imageBytes}`;
+            const imageUrls = await generateImages(visualCue, 1);
+            if (imageUrls.length > 0) {
                 setGeneratedScript(prev => {
                     if (!prev) return null;
                     const newScriptBody = [...prev.script_body];
-                    newScriptBody[index].generated_image_url = imageUrl;
+                    newScriptBody[index].generated_image_url = imageUrls[0];
                     return { ...prev, script_body: newScriptBody };
                 });
             }
@@ -264,17 +179,19 @@ Kịch bản gốc (JSON): ${JSON.stringify(generatedScript, null, 2)}`;
 
     const handleGenerateAudioForSection = async (dialogue: string, index: number) => {
         setGeneratingAssetForSection({ type: 'audio', index });
-        // NOTE: This is a placeholder for a real Text-to-Speech API call.
-        // In a real app, this would call a backend function. For now, we simulate.
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        const mockAudioUrl = "data:audio/mpeg;base64,SUQzBAAAAAAB8lYUgAAAAAADAP8AAAAAClhYWFgAAAA8AAAABQ=="; // Silent MP3
-        setGeneratedScript(prev => {
-            if (!prev) return null;
-            const newScriptBody = [...prev.script_body];
-            newScriptBody[index].generated_audio_url = mockAudioUrl;
-            return { ...prev, script_body: newScriptBody };
-        });
-        setGeneratingAssetForSection(null);
+        try {
+            const audioUrl = await generateAudio(dialogue, 'vi-VN-Wavenet-D', 1, 0);
+            setGeneratedScript(prev => {
+                if (!prev) return null;
+                const newScriptBody = [...prev.script_body];
+                newScriptBody[index].generated_audio_url = audioUrl;
+                return { ...prev, script_body: newScriptBody };
+            });
+        } catch (e) {
+            console.error(e); setError(`Lỗi tạo audio: ${e instanceof Error ? e.message : 'Thử lại sau'}`);
+        } finally {
+            setGeneratingAssetForSection(null);
+        }
     };
     
     const getScriptAsText = () => {

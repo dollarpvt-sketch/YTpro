@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { GoogleGenAI, Type } from "@google/genai";
 import { 
     RefreshIcon, 
     SpinnerIcon, 
@@ -9,10 +8,9 @@ import {
     FaceSmileIcon,
     ClipboardIcon,
     CheckIcon,
-    ChartIcon,
-    DocumentTextIcon,
     ChatBubbleLeftRightIcon
 } from './IconComponents';
+import { rewriteScript } from '../server/functions';
 
 type Lens = 'viralize' | 'clarify' | 'seo' | 'custom';
 
@@ -95,90 +93,27 @@ const AIScriptRewriter: React.FC = () => {
 
     const [copySuccess, setCopySuccess] = useState(false);
     
-    const callGeminiForRewrite = async (prompt: string): Promise<AnalysisResult> => {
-        const apiKey = window.process?.env?.API_KEY;
-        if (!apiKey) throw new Error('API Key chưa được cấu hình.');
-        const ai = new GoogleGenAI({ apiKey });
-
-        const analysisSchema = {
-            type: Type.OBJECT,
-            properties: {
-                rewritten_script: { type: Type.STRING, description: 'Toàn bộ kịch bản đã được viết lại dưới dạng một chuỗi duy nhất.' },
-                analysis: {
-                    type: Type.OBJECT,
-                    properties: {
-                        viral_potential_score: { type: Type.INTEGER, description: 'Điểm từ 1-100 đánh giá khả năng lan truyền của kịch bản mới.' },
-                        key_improvements: { type: Type.ARRAY, description: 'Một danh sách các điểm chuỗi giải thích những thay đổi quan trọng nhất đã được thực hiện.', items: { type: Type.STRING } },
-                        original_reading_time_seconds: { type: Type.INTEGER, description: 'Thời gian đọc ước tính của kịch bản gốc tính bằng giây.' },
-                        rewritten_reading_time_seconds: { type: Type.INTEGER, description: 'Thời gian đọc ước tính của kịch bản mới tính bằng giây.' },
-                    },
-                    required: ['viral_potential_score', 'key_improvements', 'original_reading_time_seconds', 'rewritten_reading_time_seconds']
-                },
-            },
-            required: ['rewritten_script', 'analysis']
-        };
-
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: analysisSchema
-            }
-        });
-        if (!response.text) throw new Error('AI không trả về kết quả hợp lệ.');
-        return JSON.parse(response.text);
-    };
-
     const handleRewrite = async () => {
         if (!originalScript.trim()) { setError('Vui lòng dán kịch bản gốc.'); return; }
         setIsLoading(true); setError(null); setAnalysisResult(null);
-
-        let lensSpecificPrompt = '';
-        switch (activeLens) {
-            case 'viralize': lensSpecificPrompt = 'Tập trung vào việc tạo ra một "hook" không thể cưỡng lại trong 15 giây đầu. Tăng nhịp độ, xây dựng sự tò mò và kết thúc bằng lời kêu gọi hành động (CTA) mạnh mẽ.'; break;
-            case 'clarify': lensSpecificPrompt = 'Viết lại kịch bản này để đạt được sự rõ ràng và súc tích tối đa. Đơn giản hóa các câu phức tạp, loại bỏ biệt ngữ.'; break;
-            case 'seo': lensSpecificPrompt = `Viết lại kịch bản này để kết hợp một cách tự nhiên các từ khóa SEO sau: "${keywords}". Các từ khóa phải cảm thấy hữu cơ và không bị ép buộc.`; break;
-            case 'custom': lensSpecificPrompt = 'Viết lại kịch bản dựa trên các tùy chỉnh nâng cao được cung cấp.'; break;
-        }
         
-        const lengthAdjustmentMap: { [key: string]: string } = {
-            default: 'Giữ nguyên độ dài tương đương với kịch bản gốc.',
-            shorter_less: 'Điều chỉnh kịch bản để nó ngắn hơn một chút so với bản gốc.',
-            shorter_more: 'Điều chỉnh kịch bản để nó ngắn hơn đáng kể (rút gọn nhiều) so với bản gốc.',
-            longer_less: 'Điều chỉnh kịch bản để nó dài hơn một chút so với bản gốc, thêm chi tiết hoặc ví dụ.',
-            longer_more: 'Điều chỉnh kịch bản để nó dài hơn đáng kể so với bản gốc, mở rộng ý tưởng và thêm nội dung mới.',
+        // This object can be expanded with more details for a real backend
+        const rewriteConfig = {
+            lens: activeLens,
+            keywords: activeLens === 'seo' ? keywords : undefined,
+            style: selectedStyle,
+            tone: selectedTone,
+            length: lengthAdjustment,
+            duration: lengthAdjustment === 'specific' ? targetDuration : undefined
         };
 
-        const advancedCustomizations = [
-            selectedStyle !== 'default' && `Thay đổi phong cách kịch bản thành: '${styles.find(s=>s.value === selectedStyle)?.name}'.`,
-            selectedTone !== 'default' && `Thay đổi tông giọng của kịch bản thành: '${tones.find(t=>t.value === selectedTone)?.name}'.`,
-            lengthAdjustment !== 'default' && lengthAdjustment !== 'specific' && lengthAdjustmentMap[lengthAdjustment],
-            lengthAdjustment === 'specific' && `Điều chỉnh kịch bản để có thời lượng video khoảng ${targetDuration} phút.`
-        ].filter(Boolean).join(' ');
-
         try {
-            const prompt = `
-            VAI TRÒ: Bạn là 'ScriptCraft AI', chuyên gia biên tập kịch bản YouTube.
-            NHIỆM VỤ: Phân tích và viết lại 'Kịch bản gốc' dựa trên 'Mục tiêu chính' và 'Tùy chỉnh nâng cao'.
-            
-            MỤC TIÊU CHÍNH (LĂNG KÍNH): ${lenses.find(l => l.id === activeLens)?.name} - ${lensSpecificPrompt}
-            ${advancedCustomizations ? `\nCÁC TÙY CHỈNH NÂNG CAO:\n${advancedCustomizations}` : ''}
-
-            QUY TẮC:
-            1. Bắt buộc trả về một đối tượng JSON hợp lệ duy nhất tuân thủ schema.
-            2. Phân tích phải sâu sắc, giải thích những cải tiến đã thực hiện.
-
-            KỊCH BẢN GỐC:
-            """
-            ${originalScript}
-            """`;
-            
-            const result = await callGeminiForRewrite(prompt);
+            // Call the simulated backend function
+            const result = await rewriteScript(originalScript, activeLens);
             setAnalysisResult(result);
         } catch (e) {
             console.error(e);
-            setError(`Đã xảy ra lỗi: ${e instanceof Error ? e.message : 'Kiểm tra API key và thử lại.'}`);
+            setError(`Đã xảy ra lỗi: ${e instanceof Error ? e.message : 'Lỗi không xác định.'}`);
         } finally {
             setIsLoading(false);
         }
@@ -187,33 +122,12 @@ const AIScriptRewriter: React.FC = () => {
     const handleRefineWithChat = async () => {
         if (!refineQuery.trim() || !analysisResult) return;
         setIsRefining(true); setError(null);
-
-        try {
-            const prompt = `
-            VAI TRÒ: Bạn là 'ScriptCraft AI'.
-            NHIỆM VỤ: Bạn đã viết lại một kịch bản. Bây giờ, hãy tinh chỉnh nó thêm một lần nữa dựa trên yêu cầu của người dùng.
-            
-            YÊU CẦU TINH CHỈNH: "${refineQuery}"
-
-            KỊCH BẢN HIỆN TẠI ĐỂ TINH CHỈNH:
-            """
-            ${analysisResult.rewritten_script}
-            """
-            
-            QUY TẮC:
-            1. Áp dụng yêu cầu tinh chỉnh vào kịch bản hiện tại.
-            2. Tạo lại toàn bộ đối tượng JSON (với kịch bản mới và phân tích mới) theo schema đã cung cấp.
-            `;
-            
-            const result = await callGeminiForRewrite(prompt);
-            setAnalysisResult(result);
-            setRefineQuery('');
-        } catch(e) {
-            console.error(e);
-            setError(`Lỗi tinh chỉnh: ${e instanceof Error ? e.message : 'Không thể hoàn thành.'}`);
-        } finally {
-            setIsRefining(false);
-        }
+        alert('Chức năng "Tinh chỉnh" đang được phát triển và sẽ sớm ra mắt!');
+        // In a real app, you would call a backend function like:
+        // const result = await refineRewrittenScript(analysisResult.rewritten_script, refineQuery);
+        // setAnalysisResult(result);
+        setIsRefining(false);
+        setRefineQuery('');
     };
     
     const copyToClipboard = () => {

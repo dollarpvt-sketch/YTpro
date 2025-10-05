@@ -61,6 +61,7 @@ const VideoGenerator: React.FC = () => {
     const startLoadingMessages = () => {
         let index = 0;
         setLoadingMessage(loadingMessages[index]);
+        // Fix: Use window.setInterval for browser environments.
         messageIntervalRef.current = window.setInterval(() => {
             index = (index + 1) % loadingMessages.length;
             setLoadingMessage(loadingMessages[index]);
@@ -107,6 +108,7 @@ const VideoGenerator: React.FC = () => {
         if (!prompt.trim()) {
             setError('Vui lòng nhập mô tả cho video.'); return;
         }
+        // Fix: Use window.process.env.API_KEY as defined in env.js for frontend code.
         const apiKey = window.process?.env?.API_KEY;
         if (!apiKey) {
             setError('API Key chưa được cấu hình.'); return;

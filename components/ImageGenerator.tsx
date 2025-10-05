@@ -1,13 +1,6 @@
 import React, { useState } from 'react';
-import { GoogleGenAI, Type } from "@google/genai";
-import { ImageIcon, SpinnerIcon, DownloadIcon, RefreshIcon, WandIcon, ClipboardDocumentListIcon } from './IconComponents';
-
-// New Icons specific to the enhanced tool
-const UpscaleIcon: React.FC<{ className?: string }> = ({ className }) => (
-    <svg className={className} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75v4.5m0-4.5h-4.5m4.5 0L15 9m5.25 11.25v-4.5m0 4.5h-4.5m4.5 0L15 15" />
-    </svg>
-);
+import { ImageIcon, SpinnerIcon, DownloadIcon, WandIcon, ClipboardDocumentListIcon } from './IconComponents';
+import { generateImages, analyzeScriptForPrompts } from '../server/functions';
 
 interface GeneratedImage {
     id: string;
@@ -77,45 +70,28 @@ const ImageGenerator: React.FC = () => {
         if (!prompt.trim()) {
             setError('Vui lòng nhập mô tả cho ảnh.'); return;
         }
-        const apiKey = window.process?.env?.API_KEY;
-        if (!apiKey) {
-            setError('API Key chưa được cấu hình.'); return;
-        }
         setIsLoading(true); setError(null); setGeneratedImages([]);
 
         try {
-            const ai = new GoogleGenAI({ apiKey });
             let fullPrompt = prompt;
-            if (selectedStyle !== 'default') {
-                fullPrompt += `, phong cách ${selectedStyle.replace(/_/g, ' ')}`;
-            }
-            if (negativePrompt.trim()) {
-                fullPrompt += `. Loại trừ: ${negativePrompt.trim()}`;
-            }
+            if (selectedStyle !== 'default') fullPrompt += `, phong cách ${selectedStyle.replace(/_/g, ' ')}`;
+            if (negativePrompt.trim()) fullPrompt += `. Loại trừ: ${negativePrompt.trim()}`;
 
-            const response = await ai.models.generateImages({
-                model: 'imagen-4.0-generate-001', prompt: fullPrompt,
-                config: {
-                    numberOfImages,
-                    outputMimeType: 'image/jpeg',
-                    aspectRatio: aspectRatio as "1:1" | "3:4" | "4:3" | "9:16" | "16:9",
-                },
-            });
+            // Call simulated backend function
+            // Fix: Pass the selected aspect ratio to the generation function.
+            const imageUrls = await generateImages(fullPrompt, numberOfImages, aspectRatio);
 
-            if (response.generatedImages && response.generatedImages.length > 0) {
-                const newImages: GeneratedImage[] = response.generatedImages.map(img => ({
-                    id: crypto.randomUUID(),
-                    url: `data:image/jpeg;base64,${img.image.imageBytes}`,
-                    prompt: prompt, aspectRatio: aspectRatio, style: selectedStyle
-                }));
-                setGeneratedImages(newImages);
-                setHistory(prev => [...newImages, ...prev].slice(0, 32));
-            } else {
-                setError('Không thể tạo ảnh. Vui lòng thử lại với một mô tả khác.');
-            }
+            const newImages: GeneratedImage[] = imageUrls.map(url => ({
+                id: crypto.randomUUID(),
+                url: url,
+                prompt: prompt, aspectRatio: aspectRatio, style: selectedStyle
+            }));
+            setGeneratedImages(newImages);
+            setHistory(prev => [...newImages, ...prev].slice(0, 32));
+           
         } catch (e) {
             console.error(e);
-            setError('Đã xảy ra lỗi khi kết nối với AI. Vui lòng kiểm tra API key và thử lại sau.');
+            setError(`Đã xảy ra lỗi: ${e instanceof Error ? e.message : 'Thử lại sau.'}`);
         } finally {
             setIsLoading(false);
         }
@@ -125,32 +101,12 @@ const ImageGenerator: React.FC = () => {
         if (!bulkScript.trim()) {
             setBulkError('Vui lòng dán kịch bản vào ô văn bản.'); return;
         }
-        const apiKey = window.process?.env?.API_KEY;
-        if (!apiKey) {
-            setBulkError('API Key chưa được cấu hình.'); return;
-        }
         setIsBulkGenerating(true); setBulkError(null); setBulkPrompts([]); setBulkGeneratedImages([]);
 
         try {
-            // Step 1: Analyze script to get prompts
             setCurrentBulkTaskId('analyzing');
-            const ai = new GoogleGenAI({ apiKey });
-            const analysisPrompt = `Phân tích kịch bản YouTube sau đây và chia nó thành các cảnh hình ảnh chính. Đối với mỗi cảnh, hãy tạo một prompt ngắn gọn, chất lượng cao phù hợp cho một công cụ tạo ảnh AI như Imagen. Các prompt phải mô tả một hình ảnh rõ ràng. QUAN TRỌNG: Đảm bảo tính nhất quán cho bất kỳ nhân vật hoặc đối tượng định kỳ nào trên các prompt. Ví dụ, nếu một nhân vật là 'một người phụ nữ trẻ tóc đỏ mặc áo khoác xanh', hãy mô tả cô ấy theo cách đó trong tất cả các prompt có liên quan. Trả về kết quả dưới dạng một đối tượng JSON chứa một khóa duy nhất là 'prompts', là một mảng các chuỗi. Kịch bản:\n\n"""${bulkScript}"""`;
-            
-            const analysisResponse = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: analysisPrompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT, properties: {
-                            prompts: { type: Type.ARRAY, items: { type: Type.STRING } }
-                        }, required: ['prompts']
-                    }
-                }
-            });
-            
-            const parsedPrompts = JSON.parse(analysisResponse.text).prompts as string[];
+            // Step 1: Analyze script using backend function
+            const parsedPrompts = await analyzeScriptForPrompts(bulkScript);
             if (!parsedPrompts || parsedPrompts.length === 0) {
                 throw new Error("AI không thể trích xuất prompt nào từ kịch bản.");
             }
@@ -158,26 +114,20 @@ const ImageGenerator: React.FC = () => {
             const promptsWithIds = parsedPrompts.map(p => ({ id: crypto.randomUUID(), prompt: p }));
             setBulkPrompts(promptsWithIds);
 
-            // Step 2: Generate images sequentially
+            // Step 2: Generate images sequentially using backend function
             for (const p of promptsWithIds) {
                 setCurrentBulkTaskId(p.id);
-                const imageResponse = await ai.models.generateImages({
-                    model: 'imagen-4.0-generate-001', prompt: `${p.prompt}, phong cách ${selectedStyle.replace(/_/g, ' ')}`,
-                    config: {
-                        numberOfImages: 1, outputMimeType: 'image/jpeg',
-                        aspectRatio: aspectRatio as "1:1" | "3:4" | "4:3" | "9:16" | "16:9",
-                    },
-                });
+                let fullPrompt = `${p.prompt}, phong cách ${selectedStyle.replace(/_/g, ' ')}`;
+                const imageUrls = await generateImages(fullPrompt, 1, aspectRatio);
 
-                if (imageResponse.generatedImages && imageResponse.generatedImages.length > 0) {
+                if (imageUrls.length > 0) {
                     const newImageResult = {
                         promptId: p.id,
-                        url: `data:image/jpeg;base64,${imageResponse.generatedImages[0].image.imageBytes}`,
+                        url: imageUrls[0],
                     };
                     setBulkGeneratedImages(prev => [...prev, newImageResult]);
                     setHistory(prev => [{...newImageResult, id: crypto.randomUUID(), prompt: p.prompt, style: selectedStyle, aspectRatio }, ...prev].slice(0, 32));
                 }
-                await new Promise(resolve => setTimeout(resolve, 5000)); // 5-second delay
             }
         } catch (e) {
             console.error(e);

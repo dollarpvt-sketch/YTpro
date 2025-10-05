@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { GoogleGenAI, Type } from "@google/genai";
 import { SearchCodeIcon, SpinnerIcon, TrendingUpIcon, FireIcon, UserPlusIcon, YouTubeIcon } from './IconComponents';
+
+// IMPORTANT: Replace this with the actual URL you get after deploying your Google Cloud Function.
+const CLOUD_FUNCTION_URL = 'YOUR_CLOUD_FUNCTION_URL_HERE';
 
 interface Channel {
     name: string;
@@ -27,162 +29,46 @@ interface AnalysisResult {
     viralVideos: Video[];
 }
 
-// Helper to format large numbers
-const formatNumber = (num: number): string => {
-    if (num >= 1000000) return `${(num / 1000000).toFixed(1)}M`;
-    if (num >= 1000) return `${(num / 1000).toFixed(1)}K`;
-    return num.toString();
-}
-
 const AIDiscovery: React.FC = () => {
-    const [query, setQuery] = useState('');
+    const [query, setQuery] = useState('faceless ai channels');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-
-    const fetchWithEnhancedErrorHandling = async (url: string, apiName: string): Promise<any> => {
-        const response = await fetch(url);
-        if (!response.ok) {
-            let errorDetails = `Status: ${response.status} ${response.statusText}.`;
-            try {
-                const errorData = await response.json();
-                if (errorData.error?.message) {
-                    errorDetails += ` Chi tiết: ${errorData.error.message}`;
-                }
-            } catch (jsonError) {
-                // Ignore if response is not json, the status text is enough
-            }
-
-            if (response.status === 400 || response.status === 403) {
-                errorDetails += " Vui lòng kiểm tra lại API key và chắc chắn rằng bạn đã bật 'YouTube Data API v3' và cấu hình giới hạn HTTP referrer chính xác trong Google Cloud Console.";
-            }
-            
-            throw new Error(`Lỗi API YouTube (${apiName}). ${errorDetails}`);
-        }
-        return response.json();
-    };
 
     const handleAnalyzeTrends = async () => {
         if (!query.trim()) {
             setError("Vui lòng nhập một ngách hoặc từ khóa để phân tích.");
             return;
         }
-        
-        const apiKey = window.process?.env?.API_KEY;
-        if (!apiKey || apiKey.startsWith('AIzaSy') === false) { // Basic check for valid key format
-            setError('API Key không hợp lệ hoặc chưa được cấu hình trong file env.js.');
+
+        if (CLOUD_FUNCTION_URL === 'YOUR_CLOUD_FUNCTION_URL_HERE') {
+            setError("Lỗi cấu hình: Vui lòng cập nhật URL của Cloud Function trong file 'components/AIDiscovery.tsx' sau khi triển khai.");
             return;
         }
-
+        
         setIsLoading(true);
         setError(null);
         setAnalysisResult(null);
 
         try {
-            // Step 1: Fetch real data from YouTube API
-            const searchData = await fetchWithEnhancedErrorHandling(
-                `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=25&q=${encodeURIComponent(query)}&type=video&order=relevance&key=${apiKey}`,
-                'Search'
-            );
-            
-            if (!searchData.items || searchData.items.length === 0) {
-                 throw new Error("Không tìm thấy video nào cho từ khóa này. Hãy thử một từ khóa khác.");
-            }
-
-            const videoIds = searchData.items.map((item: any) => item.id.videoId).join(',');
-            const channelIds = [...new Set(searchData.items.map((item: any) => item.snippet.channelId))].join(',');
-
-            const [videosData, channelsData] = await Promise.all([
-                fetchWithEnhancedErrorHandling(`https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics,contentDetails&id=${videoIds}&key=${apiKey}`, 'Videos'),
-                fetchWithEnhancedErrorHandling(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelIds}&key=${apiKey}`, 'Channels')
-            ]);
-            
-            const processedYoutubeData = {
-                videos: videosData.items.map((v: any) => ({
-                    id: v.id,
-                    title: v.snippet.title,
-                    publishedAt: v.snippet.publishedAt,
-                    viewCount: v.statistics.viewCount,
-                    channelId: v.snippet.channelId,
-                    channelTitle: v.snippet.channelTitle,
-                })),
-                channels: channelsData.items.map((c: any) => ({
-                    id: c.id,
-                    title: c.snippet.title,
-                    subscriberCount: c.statistics.subscriberCount,
-                }))
-            };
-
-            // Step 2: Send data to Gemini for analysis
-            const ai = new GoogleGenAI({ apiKey });
-            const prompt = `Bạn là Vidx.ai, một công cụ phân tích YouTube chuyên sâu. Dựa trên dữ liệu thô từ API YouTube sau đây, hãy phân tích để tìm ra các kênh "faceless AI" đang thịnh hành và các video viral. Các chỉ số phải hợp lý, VPH (lượt xem mỗi giờ) cần được tính dựa trên lượt xem và ngày đăng. Trả về một đối tượng JSON tuân thủ schema đã cho.
-            
-            Dữ liệu YouTube: ${JSON.stringify(processedYoutubeData)}`;
-
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            trendingChannels: {
-                                type: Type.ARRAY,
-                                description: "Danh sách 3-5 kênh faceless AI đang thịnh hành nhất từ dữ liệu.",
-                                items: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        name: { type: Type.STRING, description: "Tên kênh." },
-                                        subscriberCount: { type: Type.STRING, description: "Tổng số người đăng ký, định dạng '123K' hoặc '1.2M'." },
-                                        subscriberGrowth: {
-                                            type: Type.OBJECT,
-                                            properties: {
-                                                last7Days: { type: Type.STRING, description: "Ước tính người đăng ký mới trong 7 ngày, ví dụ '+5.2K'." },
-                                                last30Days: { type: Type.STRING, description: "Ước tính người đăng ký mới trong 30 ngày, ví dụ '+25K'." },
-                                            },
-                                            required: ['last7Days', 'last30Days']
-                                        },
-                                        avgViews: { type: Type.STRING, description: "Lượt xem trung bình mỗi video, ví dụ '150K'." },
-                                        niche: { type: Type.STRING, description: "Thị trường ngách của kênh." }
-                                    },
-                                    required: ['name', 'subscriberCount', 'subscriberGrowth', 'avgViews', 'niche']
-                                }
-                            },
-                            viralVideos: {
-                                type: Type.ARRAY,
-                                description: "Danh sách 5-10 video viral nhất từ dữ liệu.",
-                                items: {
-                                    type: Type.OBJECT,
-                                    properties: {
-                                        title: { type: Type.STRING, description: "Tiêu đề video." },
-                                        channelName: { type: Type.STRING, description: "Tên kênh đã đăng video." },
-                                        views: { type: Type.STRING, description: "Tổng lượt xem, ví dụ '1.8M'." },
-                                        vph: { type: Type.STRING, description: "Lượt xem mỗi giờ (VPH) được tính toán, ví dụ '2.5K'." },
-                                        viralIndex: { type: Type.INTEGER, description: "Chỉ số lan truyền từ 1-100, dựa trên VPH và tương quan với kênh." },
-                                        uploadDate: { type: Type.STRING, description: "Ngày đăng video, ví dụ '5 ngày trước'." }
-                                    },
-                                    required: ['title', 'channelName', 'views', 'vph', 'viralIndex', 'uploadDate']
-                                }
-                            }
-                        },
-                        required: ['trendingChannels', 'viralVideos']
-                    },
-                }
+            const response = await fetch(CLOUD_FUNCTION_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ query }),
             });
-            
-            if (response.text) {
-                const result = JSON.parse(response.text);
-                setAnalysisResult(result);
-            } else {
-                 setError('AI không thể phân tích dữ liệu. Vui lòng thử lại.');
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Lỗi từ máy chủ: ${response.status} ${errorText}`);
             }
+
+            const result: AnalysisResult = await response.json();
+            setAnalysisResult(result);
         } catch (e) {
             console.error(e);
-            let friendlyMessage = e instanceof Error ? e.message : String(e);
-            if (friendlyMessage.includes('Failed to fetch')) {
-                 friendlyMessage = "Lỗi mạng hoặc CORS. Vui lòng kiểm tra kết nối internet và đảm bảo API key của bạn cho phép truy cập từ tên miền này trong Google Cloud Console.";
-            }
+            const friendlyMessage = e instanceof Error ? e.message : String(e);
             setError(`Đã xảy ra lỗi: ${friendlyMessage}`);
         } finally {
             setIsLoading(false);
@@ -195,7 +81,7 @@ const AIDiscovery: React.FC = () => {
                 <div className="text-center mb-12">
                     <h2 className="text-3xl md:text-4xl font-bold text-text-main">Tìm Kênh Ẩn, Ngách Ẩn (Theo Vidx.ai)</h2>
                     <p className="text-lg text-text-secondary mt-4 max-w-3xl mx-auto">
-                        Kết nối sức mạnh của API YouTube và Gemini. Nhập một ngách để phân tích dữ liệu thực tế, tìm ra các kênh và video viral có tốc độ tăng trưởng đột phá.
+                        Nhập một ngách để AI phân tích dữ liệu, tìm ra các kênh và video viral có tốc độ tăng trưởng đột phá.
                     </p>
                 </div>
                 
@@ -265,7 +151,7 @@ const AIDiscovery: React.FC = () => {
 
                              <div className="text-center pt-8">
                                 <button
-                                    onClick={() => setAnalysisResult(null)}
+                                    onClick={() => { setAnalysisResult(null); setQuery(''); }}
                                     className="bg-secondary text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-300 hover:bg-gray-700 disabled:bg-gray-600 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
                                 >
                                     <span>Phân Tích Ngách Khác</span>

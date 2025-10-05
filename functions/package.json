@@ -1,0 +1,25 @@
+{
+  "name": "yt-pro-tools-backend",
+  "version": "1.0.0",
+  "description": "Backend functions for YT Pro Tools",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && functions-framework --target=discoverChannels",
+    "deploy": "npm run build && gcloud functions deploy discoverChannels --gen2 --runtime=nodejs20 --region=us-central1 --source=. --entry-point=discoverChannels --trigger-http --allow-unauthenticated"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.0.0",
+    "node-fetch": "^2.6.1",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/node": "^18.0.0",
+    "@types/node-fetch": "^2.6.1",
+    "typescript": "^4.0.0"
+  },
+  "engines": {
+    "node": "20"
+  }
+}

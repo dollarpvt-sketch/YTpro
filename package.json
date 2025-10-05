@@ -11,7 +11,10 @@
   "dependencies": {
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "@google/genai": "latest"
+    "@google/genai": "latest",
+    "cors": "^2.8.5",
+    "@google-cloud/functions-framework": "^4.0.0",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
