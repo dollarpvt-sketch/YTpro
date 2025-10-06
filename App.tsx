@@ -71,6 +71,20 @@ const App: React.FC = () => {
         }, 0);
     };
     
+    const goBackToTools = () => {
+        setActiveTool(null);
+        // Use a timeout to allow the main page to render before scrolling
+        setTimeout(() => {
+            const toolsSection = document.getElementById('tools');
+            if (toolsSection) {
+                toolsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } else {
+                // Fallback in case the element isn't found immediately
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+        }, 0);
+    };
+
     const renderActiveTool = () => {
         const toolMap: { [key: string]: React.ReactNode } = {
             'script-writer': <AIScriptWriter />,
@@ -104,7 +118,7 @@ const App: React.FC = () => {
                     ) : (
                         <div className="container mx-auto px-6 py-12">
                             <button 
-                                onClick={() => setActiveTool(null)} 
+                                onClick={goBackToTools} 
                                 className="inline-flex items-center gap-2 text-text-secondary hover:text-text-main mb-8 transition-colors group"
                             >
                                 <ArrowLeftIcon className="w-5 h-5 transition-transform group-hover:-translate-x-1" />

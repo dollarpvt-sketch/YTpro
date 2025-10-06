@@ -275,3 +275,143 @@ export const rewriteScript = async (script: string, lens: string): Promise<Analy
         throw new Error("AI returned an invalid response format for script rewrite.");
     }
 };
+
+export interface OverallSEOInputs {
+    topic: string;
+    keywords: string;
+    channelLink: string;
+    businessEmail: string;
+}
+
+interface SEOTitle {
+    text: string;
+    score: number;
+}
+
+interface SEOTags {
+    tags: string[];
+    characterCount: number;
+}
+
+interface SEOChecklist {
+    keywordRepetition: number;
+    keywordsInTitle: number;
+    keywordsInDescription: number;
+    tagCount: number;
+    performance: number;
+    rankingTags: number;
+    highVolumeTags: number;
+}
+
+export interface OverallSEOResult {
+    titles: SEOTitle[];
+    description: string;
+    tags: SEOTags;
+    checklist: SEOChecklist;
+}
+
+export const generateOverallSEO = async (inputs: OverallSEOInputs): Promise<OverallSEOResult> => {
+    const prompt = `
+        You are an expert YouTube SEO specialist with deep knowledge of the YouTube algorithm, similar to tools like vidIQ and TubeBuddy. Your task is to generate a complete SEO package for a video based on the provided details.
+
+        **Video Details:**
+        - **Topic:** "${inputs.topic}"
+        - **Main Keywords:** "${inputs.keywords}"
+        - **Creator's Channel Link:** "${inputs.channelLink}"
+        - **Creator's Business Email:** "${inputs.businessEmail}"
+
+        **Your Task:**
+        Generate a JSON object with the following structure and strictly adhere to these rules:
+
+        **1. Titles (\`titles\`):**
+        - Generate EXACTLY 3 unique, highly-clickable titles.
+        - Each title must have an SEO score between 95 and 100.
+        - Each title MUST end with 2 or 3 relevant hashtags. Example: "... Title Text #Hashtag1 #Hashtag2"
+
+        **2. Description (\`description\`):**
+        - Write a compelling, keyword-rich description of about 200-300 words.
+        - The description MUST start with exactly 5 relevant primary hashtags on the very first line.
+        - The description MUST contain the creator's channel link: "${inputs.channelLink}".
+        - The description MUST contain the creator's business email: "${inputs.businessEmail}".
+        - The description MUST end with a list of 10 additional, broader hashtags.
+
+        **3. Tags (\`tags\`):**
+        - Generate a list of 30 to 40 highly relevant tags.
+        - The total character count of all tags combined MUST NOT exceed 500 characters.
+        - The tag strategy MUST be as follows:
+            - The VERY FIRST tag must be the most important keyword from the Main Keywords list.
+            - Include a mix of broad (gold), specific (silver), long-tail, and short-tail tags.
+            - Include tags for the channel's general topic and the specific video topic.
+            - Ensure high consistency: the main keywords should appear in the titles, description, and tags.
+        - Calculate and provide the \`characterCount\`.
+
+        **4. SEO Checklist (\`checklist\`):**
+        - Evaluate YOUR OWN generated content (titles, description, tags) against these SEO best practices.
+        - Provide a score from 0 to 5 for each item. Be honest in your scoring.
+        - \`keywordRepetition\`: How well are main keywords repeated across title, description, and tags? (should be 5/5)
+        - \`keywordsInTitle\`: Are the main keywords present in the generated titles? (should be 5/5)
+        - \`keywordsInDescription\`: Are the main keywords present in the description? (should be 5/5)
+        - \`tagCount\`: Is the number of tags optimal (30-40) and under 500 characters? (should be 5/5)
+        - \`performance\`: An overall performance score based on clickability, relevance, and SEO strength.
+        - \`rankingTags\`: How many of the generated tags have a good chance of ranking?
+        - \`highVolumeTags\`: How many of the generated tags are high-volume search terms?
+
+        Respond ONLY with the JSON object that matches the specified schema. Do not include any other text or markdown formatting.
+    `;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt,
+        config: {
+            temperature: 0.8,
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    titles: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                text: { type: Type.STRING },
+                                score: { type: Type.INTEGER }
+                            },
+                            required: ["text", "score"]
+                        }
+                    },
+                    description: { type: Type.STRING },
+                    tags: {
+                        type: Type.OBJECT,
+                        properties: {
+                            tags: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            characterCount: { type: Type.INTEGER }
+                        },
+                        required: ["tags", "characterCount"]
+                    },
+                    checklist: {
+                        type: Type.OBJECT,
+                        properties: {
+                            keywordRepetition: { type: Type.INTEGER },
+                            keywordsInTitle: { type: Type.INTEGER },
+                            keywordsInDescription: { type: Type.INTEGER },
+                            tagCount: { type: Type.INTEGER },
+                            performance: { type: Type.INTEGER },
+                            rankingTags: { type: Type.INTEGER },
+                            highVolumeTags: { type: Type.INTEGER }
+                        },
+                        required: ["keywordRepetition", "keywordsInTitle", "keywordsInDescription", "tagCount", "performance", "rankingTags", "highVolumeTags"]
+                    }
+                },
+                required: ["titles", "description", "tags", "checklist"]
+            },
+        },
+    });
+
+    try {
+        const jsonText = response.text.trim();
+        return JSON.parse(jsonText);
+    } catch (e) {
+        console.error("Failed to parse JSON from Gemini:", response.text);
+        throw new Error("AI returned an invalid response format for SEO generation.");
+    }
+};
