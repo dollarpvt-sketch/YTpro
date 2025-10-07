@@ -1,16 +1,9 @@
 import React, { useState } from 'react';
 import { AuthProvider } from './contexts/AuthContext';
-import Header from './components/Header';
-import HeroSection from './components/HeroSection';
-import FeaturesSection from './components/FeaturesSection';
-import ToolsShowcase from './components/ToolsShowcase';
-import TestimonialsSection from './components/TestimonialsSection';
-import PricingSection from './components/PricingSection';
-import AffiliateSection from './components/AffiliateSection';
-import Footer from './components/Footer';
 import Modal from './components/Modal';
 import AffiliateProgram from './components/AffiliateProgram';
 import { AboutUsContent, ContactContent, BlogContent, TermsOfServiceContent, PrivacyPolicyContent } from './components/LegalContent';
+import { ArrowLeftIcon } from './components/IconComponents';
 
 // Import all tool components
 import AIScriptWriter from './components/AIScriptWriter';
@@ -23,8 +16,8 @@ import AIDiscovery from './components/AIDiscovery';
 import VideoManager from './components/VideoManager';
 import BulkEditor from './components/BulkEditor';
 import SocialAutomation from './components/SocialAutomation';
-import { ArrowLeftIcon } from './components/IconComponents';
-
+import Dashboard from './components/Dashboard';
+import DashboardLayout from './components/DashboardLayout';
 
 const App: React.FC = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -35,9 +28,9 @@ const App: React.FC = () => {
         setModalContent({ title, content });
         setIsModalOpen(true);
     };
-
-    const handleLinkClick = (pageId: string) => {
-        switch (pageId) {
+    
+    const handleFooterLinkClick = (pageId: string) => {
+         switch (pageId) {
             case 'affiliate-join':
                 showModal('Chương trình Affiliate', <AffiliateProgram />);
                 break;
@@ -61,28 +54,9 @@ const App: React.FC = () => {
                 break;
         }
     };
-
-    const goHome = () => {
-        setActiveTool(null);
-        setIsModalOpen(false);
-        // Use timeout to ensure state update before scrolling
-        setTimeout(() => {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }, 0);
-    };
     
-    const goBackToTools = () => {
+    const goBackToDashboard = () => {
         setActiveTool(null);
-        // Use a timeout to allow the main page to render before scrolling
-        setTimeout(() => {
-            const toolsSection = document.getElementById('tools');
-            if (toolsSection) {
-                toolsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            } else {
-                // Fallback in case the element isn't found immediately
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-        }, 0);
     };
 
     const renderActiveTool = () => {
@@ -91,44 +65,40 @@ const App: React.FC = () => {
             'script-rewriter': <AIScriptRewriter />,
             'text-to-speech': <TextToSpeech />,
             'image-generator': <ImageGenerator />,
-            'video-generator': <div className="bg-card border border-secondary rounded-xl p-8 container mx-auto"><VideoGenerator /></div>,
+            'video-generator': <div className="bg-card rounded-xl p-8 container mx-auto"><VideoGenerator /></div>,
             'youtube-tricks': <YouTubeTricks />,
             'channel-discovery': <AIDiscovery />,
             'video-manager': <VideoManager />,
             'bulk-editor': <BulkEditor />,
             'automation': <SocialAutomation />,
         };
-        return toolMap[activeTool || ''] || null;
+        const toolComponent = toolMap[activeTool || ''] || null;
+
+        return (
+             <div className="py-8 px-4 sm:px-6 lg:px-8">
+                <button 
+                    onClick={goBackToDashboard} 
+                    className="inline-flex items-center gap-2 text-text-secondary hover:text-text-main mb-8 transition-colors group"
+                >
+                    <ArrowLeftIcon className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
+                    <span>Quay lại Bảng điều khiển</span>
+                </button>
+                {toolComponent}
+            </div>
+        );
     };
 
     return (
         <AuthProvider>
-            <div className="bg-background text-text-main font-sans min-h-screen flex flex-col">
-                <Header onGoHome={goHome} />
-                <main className="flex-grow">
-                    {activeTool === null ? (
-                        <>
-                            <HeroSection />
-                            <FeaturesSection />
-                            <ToolsShowcase onSelectTool={setActiveTool} />
-                            <TestimonialsSection />
-                            <PricingSection />
-                            <AffiliateSection onJoinClick={() => showModal('Trở thành Đối tác của chúng tôi', <AffiliateProgram />)} />
-                        </>
+            <div className="bg-background text-text-main font-sans min-h-screen">
+                <DashboardLayout onFooterLinkClick={handleFooterLinkClick}>
+                    {activeTool ? (
+                        renderActiveTool()
                     ) : (
-                        <div className="container mx-auto px-6 py-12">
-                            <button 
-                                onClick={goBackToTools} 
-                                className="inline-flex items-center gap-2 text-text-secondary hover:text-text-main mb-8 transition-colors group"
-                            >
-                                <ArrowLeftIcon className="w-5 h-5 transition-transform group-hover:-translate-x-1" />
-                                <span>Quay lại tất cả công cụ</span>
-                            </button>
-                            {renderActiveTool()}
-                        </div>
+                        <Dashboard onSelectTool={setActiveTool} />
                     )}
-                </main>
-                <Footer onLinkClick={handleLinkClick} />
+                </DashboardLayout>
+                
                 <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={modalContent.title}>
                     {modalContent.content}
                 </Modal>

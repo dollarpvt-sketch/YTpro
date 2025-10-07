@@ -18,8 +18,8 @@
             colors: {
               'primary': '#FF0000',
               'secondary': '#282828',
-              'background': '#121212',
-              'card': '#1E1E1E',
+              'background': '#1A1D21',
+              'card': '#24272C',
               'text-main': '#FFFFFF',
               'text-secondary': '#B3B3B3',
               'accent': '#FF4500',
@@ -52,6 +52,86 @@
 <style>
   html {
     scroll-behavior: smooth;
+  }
+  
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #1A1D21; /* Match tailwind bg */
+  }
+  
+  /* --- Global Animations & Enhancements --- */
+
+  /* Fade-in-up animation for sections */
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fadeInUp {
+    animation: fadeInUp 0.8s ease-out forwards;
+  }
+  
+  /* Glow animation for popular pricing card */
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 0 10px 0px var(--tw-shadow-color); }
+    50% { box-shadow: 0 0 25px 5px var(--tw-shadow-color); }
+  }
+
+  .animate-glow {
+    animation: glow 3s ease-in-out infinite;
+  }
+
+  /* Marquee animation for recent projects - FIXED */
+  @keyframes marquee-rtl {
+    0% { transform: translateX(0%); }
+    100% { transform: translateX(-100%); }
+  }
+  @keyframes marquee-ltr {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(0%); }
+  }
+
+  .animate-marquee-ltr {
+    animation: marquee-ltr 120s linear infinite;
+  }
+  .animate-marquee-rtl {
+    animation: marquee-rtl 120s linear infinite;
+  }
+
+
+  /* Mask for marquee edges */
+  .mask-gradient {
+    -webkit-mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0%, black 5%, black 95%, transparent 100%);
+  }
+
+  /* Base transitions for interactive elements */
+  a, button {
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  }
+
+  /* Custom scrollbar for a more modern look */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    background: #1E1E1E;
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: #282828;
+    border-radius: 4px;
+  }
+   ::-webkit-scrollbar-thumb:hover {
+    background-color: #FF0000;
   }
 </style>
 </head>

@@ -281,6 +281,8 @@ export interface OverallSEOInputs {
     keywords: string;
     channelLink: string;
     businessEmail: string;
+    targetAudience: string;
+    desiredEmotion: string;
 }
 
 interface SEOTitle {
@@ -303,20 +305,31 @@ interface SEOChecklist {
     highVolumeTags: number;
 }
 
+interface ThumbnailConcept {
+    conceptDescription: string;
+    colorPairs: string[];
+    facialExpression: string;
+    objects: string[];
+    score: number;
+}
+
 export interface OverallSEOResult {
     titles: SEOTitle[];
     description: string;
     tags: SEOTags;
     checklist: SEOChecklist;
+    thumbnails: ThumbnailConcept[];
 }
 
 export const generateOverallSEO = async (inputs: OverallSEOInputs): Promise<OverallSEOResult> => {
     const prompt = `
-        You are an expert YouTube SEO specialist with deep knowledge of the YouTube algorithm, similar to tools like vidIQ and TubeBuddy. Your task is to generate a complete SEO package for a video based on the provided details.
+        You are a world-class YouTube SEO and virality expert, like a combination of MrBeast's strategy team and vidIQ's data science team. Your task is to generate a complete SEO and creative package for a video.
 
         **Video Details:**
         - **Topic:** "${inputs.topic}"
         - **Main Keywords:** "${inputs.keywords}"
+        - **Target Audience:** "${inputs.targetAudience}"
+        - **Desired Emotion for Thumbnail:** "${inputs.desiredEmotion}"
         - **Creator's Channel Link:** "${inputs.channelLink}"
         - **Creator's Business Email:** "${inputs.businessEmail}"
 
@@ -325,38 +338,42 @@ export const generateOverallSEO = async (inputs: OverallSEOInputs): Promise<Over
 
         **1. Titles (\`titles\`):**
         - Generate EXACTLY 3 unique, highly-clickable titles.
-        - Each title must have an SEO score between 95 and 100.
-        - Each title MUST end with 2 or 3 relevant hashtags. Example: "... Title Text #Hashtag1 #Hashtag2"
+        - Each title MUST be under 60 characters.
+        - Each title MUST incorporate these viral elements: a Number, Curiosity, a clear Benefit, and a sense of Urgency or Warning.
+        - Each title MUST end with 2 or 3 relevant hashtags.
+        - Provide an SEO score from 0-100 for each title.
 
-        **2. Description (\`description\`):**
+        **2. Thumbnail Concepts (\`thumbnails\`):**
+        - Based on the Topic and Desired Emotion ("${inputs.desiredEmotion}"), generate EXACTLY 3 distinct thumbnail concepts.
+        - For each concept, provide:
+            - \`conceptDescription\`: A short, compelling description of the thumbnail's story.
+            - \`colorPairs\`: Two high-contrast color pairs (e.g., ["Yellow & Black", "Cyan & Magenta"]).
+            - \`facialExpression\`: A clear description of the human facial expression (e.g., "Shocked open mouth, wide eyes").
+            - \`objects\`: A list of 2 key objects or icons to include (e.g., ["Explosion icon", "Question mark"]).
+            - \`score\`: A score from 0-100 evaluating its potential to get clicks.
+
+        **3. Description (\`description\`):**
         - Write a compelling, keyword-rich description of about 200-300 words.
-        - The description MUST start with exactly 5 relevant primary hashtags on the very first line.
-        - The description MUST contain the creator's channel link: "${inputs.channelLink}".
-        - The description MUST contain the creator's business email: "${inputs.businessEmail}".
-        - The description MUST end with a list of 10 additional, broader hashtags.
+        - The description MUST be well-structured and easy to read. Use line breaks to create short paragraphs (2-3 sentences each).
+        - Strategically use relevant emojis (like 🚀, ✅, 👉) to make the text more engaging and break up sections.
+        - The structure MUST be:
+            1. The first line contains exactly 5 relevant primary hashtags.
+            2. The main body of the description, formatted with short paragraphs and emojis.
+            3. A section for contact information, which MUST include the creator's channel link and business email.
+            4. The final section MUST be a list of 10 additional, broader hashtags.
 
-        **3. Tags (\`tags\`):**
+        **4. Tags (\`tags\`):**
         - Generate a list of 30 to 40 highly relevant tags.
-        - The total character count of all tags combined MUST NOT exceed 500 characters.
-        - The tag strategy MUST be as follows:
-            - The VERY FIRST tag must be the most important keyword from the Main Keywords list.
-            - Include a mix of broad (gold), specific (silver), long-tail, and short-tail tags.
-            - Include tags for the channel's general topic and the specific video topic.
-            - Ensure high consistency: the main keywords should appear in the titles, description, and tags.
+        - Total character count MUST NOT exceed 500 characters.
+        - The first tag MUST be the most important keyword.
+        - Include a mix of broad, specific, long-tail, and short-tail tags.
         - Calculate and provide the \`characterCount\`.
 
-        **4. SEO Checklist (\`checklist\`):**
-        - Evaluate YOUR OWN generated content (titles, description, tags) against these SEO best practices.
-        - Provide a score from 0 to 5 for each item. Be honest in your scoring.
-        - \`keywordRepetition\`: How well are main keywords repeated across title, description, and tags? (should be 5/5)
-        - \`keywordsInTitle\`: Are the main keywords present in the generated titles? (should be 5/5)
-        - \`keywordsInDescription\`: Are the main keywords present in the description? (should be 5/5)
-        - \`tagCount\`: Is the number of tags optimal (30-40) and under 500 characters? (should be 5/5)
-        - \`performance\`: An overall performance score based on clickability, relevance, and SEO strength.
-        - \`rankingTags\`: How many of the generated tags have a good chance of ranking?
-        - \`highVolumeTags\`: How many of the generated tags are high-volume search terms?
+        **5. SEO Checklist (\`checklist\`):**
+        - Evaluate YOUR OWN generated content and provide a score from 0 to 5 for each item.
+        - \`keywordRepetition\`, \`keywordsInTitle\`, \`keywordsInDescription\`, \`tagCount\`, \`performance\`, \`rankingTags\`, \`highVolumeTags\`.
 
-        Respond ONLY with the JSON object that matches the specified schema. Do not include any other text or markdown formatting.
+        Respond ONLY with the JSON object that matches the specified schema.
     `;
 
     const response = await ai.models.generateContent({
@@ -377,6 +394,20 @@ export const generateOverallSEO = async (inputs: OverallSEOInputs): Promise<Over
                                 score: { type: Type.INTEGER }
                             },
                             required: ["text", "score"]
+                        }
+                    },
+                    thumbnails: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                conceptDescription: { type: Type.STRING },
+                                colorPairs: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                facialExpression: { type: Type.STRING },
+                                objects: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                score: { type: Type.INTEGER }
+                            },
+                            required: ["conceptDescription", "colorPairs", "facialExpression", "objects", "score"]
                         }
                     },
                     description: { type: Type.STRING },
@@ -402,7 +433,7 @@ export const generateOverallSEO = async (inputs: OverallSEOInputs): Promise<Over
                         required: ["keywordRepetition", "keywordsInTitle", "keywordsInDescription", "tagCount", "performance", "rankingTags", "highVolumeTags"]
                     }
                 },
-                required: ["titles", "description", "tags", "checklist"]
+                required: ["titles", "thumbnails", "description", "tags", "checklist"]
             },
         },
     });

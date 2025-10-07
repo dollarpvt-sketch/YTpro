@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { 
-    SeoIcon, SpinnerIcon, ClipboardIcon, CheckIcon, ChartIcon, WandIcon, DocumentTextIcon, KeyIcon
+    SeoIcon, SpinnerIcon, ClipboardIcon, CheckIcon, ChartIcon, WandIcon, DocumentTextIcon, KeyIcon, ImageIcon, FaceSmileIcon, DownloadIcon
 } from './IconComponents';
-import { generateOverallSEO, OverallSEOResult, OverallSEOInputs } from '../server/functions';
+import { generateOverallSEO, OverallSEOResult, OverallSEOInputs, generateImages } from '../server/functions';
 
 const checklistLabels: { [key: string]: string } = {
     keywordRepetition: 'Từ khóa lặp lại 3 lần',
@@ -14,17 +14,26 @@ const checklistLabels: { [key: string]: string } = {
     highVolumeTags: 'Tags có lượng tìm kiếm cao',
 };
 
+interface ThumbnailState {
+    imageUrl?: string;
+    isLoading: boolean;
+}
+
 const OverallSEO: React.FC = () => {
     const [inputs, setInputs] = useState<OverallSEOInputs>({
         topic: 'Cách để bắt đầu một kênh YouTube thành công từ con số 0 vào năm 2024',
         keywords: 'youtube, người mới bắt đầu, tăng trưởng kênh, kiếm tiền youtube',
         channelLink: 'https://www.youtube.com/channel/your-channel-id',
         businessEmail: 'contact@your-business.com',
+        targetAudience: 'Người mới làm YouTube, sinh viên, người muốn kiếm tiền online',
+        desiredEmotion: 'Tò mò, Hứng thú, Tin tưởng',
     });
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [results, setResults] = useState<OverallSEOResult | null>(null);
     const [copiedText, setCopiedText] = useState<string | null>(null);
+
+    const [thumbnailStates, setThumbnailStates] = useState<Record<number, ThumbnailState>>({});
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -35,7 +44,7 @@ const OverallSEO: React.FC = () => {
         if (!inputs.topic.trim()) {
             setError('Vui lòng nhập chủ đề video.'); return;
         }
-        setIsLoading(true); setError(null); setResults(null);
+        setIsLoading(true); setError(null); setResults(null); setThumbnailStates({});
         try {
             const generated = await generateOverallSEO(inputs);
             setResults(generated);
@@ -50,6 +59,32 @@ const OverallSEO: React.FC = () => {
         navigator.clipboard.writeText(text);
         setCopiedText(type);
         setTimeout(() => setCopiedText(null), 2000);
+    }
+
+    const handleGenerateThumbnail = async (concept: OverallSEOResult['thumbnails'][0], index: number) => {
+        setThumbnailStates(prev => ({ ...prev, [index]: { isLoading: true } }));
+        
+        const thumbnailPrompt = `
+            Create a photorealistic YouTube thumbnail.
+            Video Topic: "${inputs.topic}".
+            Target Audience: "${inputs.targetAudience}". This is crucial, the people in the image must match this audience.
+            Visual Concept: "${concept.conceptDescription}".
+            Key Elements: A person matching the target audience with a "${concept.facialExpression}" expression. Include these objects: ${concept.objects.join(', ')}.
+            Color Palette: Use a high-contrast scheme with ${concept.colorPairs.join(' and ')}.
+            Style: Clean, modern, highly clickable, eye-catching. No text.
+        `;
+
+        try {
+            const imageUrls = await generateImages(thumbnailPrompt, 1, '16:9');
+            if (imageUrls.length > 0) {
+                setThumbnailStates(prev => ({ ...prev, [index]: { isLoading: false, imageUrl: imageUrls[0] } }));
+            } else {
+                 throw new Error("AI không trả về ảnh nào.");
+            }
+        } catch (e) {
+            setError(`Lỗi tạo thumbnail: ${e instanceof Error ? e.message : 'Thử lại sau'}`);
+            setThumbnailStates(prev => ({ ...prev, [index]: { isLoading: false } }));
+        }
     }
 
     return (
@@ -75,6 +110,14 @@ const OverallSEO: React.FC = () => {
                     <div>
                         <label className="font-semibold text-text-main mb-2 block">Từ khóa mục tiêu (phân cách bằng dấu phẩy)</label>
                         <input type="text" name="keywords" value={inputs.keywords} onChange={handleInputChange} className="w-full bg-background border border-secondary rounded-lg p-3 text-text-main focus:outline-none focus:ring-2 focus:ring-primary" disabled={isLoading} />
+                    </div>
+                     <div>
+                        <label className="font-semibold text-text-main mb-2 block">Đối tượng khán giả</label>
+                        <input type="text" name="targetAudience" value={inputs.targetAudience} onChange={handleInputChange} className="w-full bg-background border border-secondary rounded-lg p-3 text-text-main focus:outline-none focus:ring-2 focus:ring-primary" disabled={isLoading} />
+                    </div>
+                     <div>
+                        <label className="font-semibold text-text-main mb-2 block">Cảm xúc Thumbnail mong muốn</label>
+                        <input type="text" name="desiredEmotion" value={inputs.desiredEmotion} onChange={handleInputChange} className="w-full bg-background border border-secondary rounded-lg p-3 text-text-main focus:outline-none focus:ring-2 focus:ring-primary" disabled={isLoading} />
                     </div>
                      <div>
                         <label className="font-semibold text-text-main mb-2 block">Link kênh YouTube của bạn</label>
@@ -130,6 +173,60 @@ const OverallSEO: React.FC = () => {
                                 </div>
                             </div>
                             
+                            {/* Thumbnails */}
+                            <div className="bg-card border border-secondary rounded-xl p-6">
+                                <h3 className="text-xl font-bold text-text-main mb-4 flex items-center gap-2"><ImageIcon className="w-6 h-6 text-accent"/>Ý tưởng Thumbnail</h3>
+                                <div className="space-y-4">
+                                    {results.thumbnails.map((concept, index) => {
+                                        const state = thumbnailStates[index] || { isLoading: false };
+                                        return (
+                                            <div key={index} className="bg-background/50 border border-secondary rounded-lg p-4">
+                                                <div className="flex flex-col md:flex-row justify-between md:items-start gap-4">
+                                                    <div className="flex-grow">
+                                                        <div className="flex justify-between items-center mb-2">
+                                                            <p className="text-text-main font-semibold">{`Concept ${index + 1}`}</p>
+                                                             <div className="text-right text-xs text-text-secondary">Điểm Click: <span className="font-bold text-text-main">{concept.score}/100</span></div>
+                                                        </div>
+                                                        <p className="text-sm text-text-secondary mb-3">{concept.conceptDescription}</p>
+                                                        <div className="text-xs space-y-2">
+                                                            <p><strong className="text-text-main">Biểu cảm:</strong> {concept.facialExpression}</p>
+                                                            <p><strong className="text-text-main">Vật thể:</strong> {concept.objects.join(', ')}</p>
+                                                            <p><strong className="text-text-main">Màu sắc:</strong> {concept.colorPairs.join(' | ')}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="w-full md:w-48 h-auto md:h-28 aspect-video md:aspect-auto bg-background border border-secondary rounded-md flex-shrink-0 flex items-center justify-center overflow-hidden relative group">
+                                                        {state.isLoading ? (
+                                                            <SpinnerIcon className="w-8 h-8 text-primary animate-spin" />
+                                                        ) : state.imageUrl ? (
+                                                            <>
+                                                                <img src={state.imageUrl} alt={`Generated thumbnail ${index + 1}`} className="w-full h-full object-cover" />
+                                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
+                                                                    <a href={state.imageUrl} download={`yt-pro-thumbnail-${index + 1}.jpg`} title="Tải xuống" className="p-3 bg-white/10 rounded-full text-white hover:bg-white/20">
+                                                                        <DownloadIcon className="w-5 h-5"/>
+                                                                    </a>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <FaceSmileIcon className="w-8 h-8 text-secondary" />
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                {!state.imageUrl && (
+                                                    <button 
+                                                        onClick={() => handleGenerateThumbnail(concept, index)} 
+                                                        disabled={state.isLoading}
+                                                        className="mt-3 w-full bg-accent/20 text-accent font-semibold py-2 rounded-lg hover:bg-accent/30 transition-colors inline-flex items-center justify-center gap-2 text-sm disabled:opacity-50"
+                                                    >
+                                                        {state.isLoading ? <SpinnerIcon className="w-4 h-4 animate-spin"/> : <ImageIcon className="w-4 h-4"/>}
+                                                        Tạo ảnh
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                             </div>
+
                             {/* Description */}
                             <div className="bg-card border border-secondary rounded-xl p-6">
                                 <div className="flex justify-between items-center mb-4">
@@ -138,7 +235,7 @@ const OverallSEO: React.FC = () => {
                                         {copiedText === 'desc' ? <><CheckIcon className="w-5 h-5"/> Đã sao chép</> : <><ClipboardIcon className="w-5 h-5"/> Sao chép</>}
                                     </button>
                                 </div>
-                                <pre className="w-full bg-background/50 border border-secondary rounded-lg p-4 text-text-secondary whitespace-pre-wrap font-sans text-sm max-h-60 overflow-y-auto">{results.description}</pre>
+                                <div className="w-full bg-background/50 border border-secondary rounded-lg p-4 text-text-secondary whitespace-pre-wrap font-sans text-sm max-h-60 overflow-y-auto">{results.description}</div>
                             </div>
 
                              {/* Tags */}
@@ -168,7 +265,6 @@ const OverallSEO: React.FC = () => {
                                             <span className="text-text-secondary text-sm">{checklistLabels[key] || key}</span>
                                             <div className="flex items-center gap-1">
                                                 {Array.from({ length: 5 }).map((_, i) => (
-                                                    // FIX: Cast `value` to number for comparison as Object.entries returns `unknown`.
                                                     <div key={i} className={`w-3 h-5 rounded-sm ${i < (value as number) ? 'bg-green-500' : 'bg-secondary'}`}></div>
                                                 ))}
                                                  <span className="font-bold text-text-main ml-2">{value}/5</span>

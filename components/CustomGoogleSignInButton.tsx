@@ -21,8 +21,8 @@ const CustomGoogleSignInButton: React.FC<CustomGoogleSignInButtonProps> = ({ chi
         // but for now, we'll let the loading state persist until a login happens or the page reloads.
     };
 
-    const baseClasses = "inline-flex items-center gap-3 px-4 py-2 font-semibold border rounded-lg transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-background";
-    const defaultClasses = "bg-secondary border-secondary text-text-main hover:bg-gray-700";
+    const baseClasses = "inline-flex items-center justify-center gap-3 px-4 py-2 font-semibold rounded-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-background";
+    const defaultClasses = "bg-secondary border border-secondary text-text-main hover:bg-gray-700";
 
     return (
         <button
